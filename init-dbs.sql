@@ -1,0 +1,1 @@
+CREATE DATABASE chainlit_db;

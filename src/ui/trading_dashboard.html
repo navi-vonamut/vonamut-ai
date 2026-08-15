@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VONAMUT AI | Autonomous Bybit Trading Terminal</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        background: '#09090b',
+                        foreground: '#fafafa',
+                        card: '#121215',
+                        'card-border': '#27272a',
+                        accent: '#ffffff',
+                        'accent-muted': '#71717a',
+                        success: '#22c55e',
+                        danger: '#ef4444',
+                        warning: '#f59e0b',
+                    },
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'Menlo', 'monospace'],
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Lightweight Charts for Candlestick Visualizer -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        body {
+            background-color: #09090b;
+            color: #fafafa;
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Vercel Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #09090b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #27272a;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3f3f46;
+        }
+
+        .pulse-dot {
+            box-shadow: 0 0 8px currentColor;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-[#09090b] text-[#fafafa] flex flex-col selection:bg-zinc-800 selection:text-white">
+
+    <!-- 1. SYSTEM STATUS HEADER -->
+    <header class="border-b border-[#27272a] bg-[#0c0c0e]/80 backdrop-blur sticky top-0 z-50 px-4 py-2.5">
+        <div class="max-w-[1700px] mx-auto flex flex-wrap items-center justify-between gap-4">
+            
+            <!-- Logo & Title -->
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded border border-zinc-700 bg-black flex items-center justify-center font-mono font-bold text-sm tracking-wider">
+                    VN
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="font-semibold text-sm tracking-tight text-white">VONAMUT TERMINAL</span>
+                        <span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">Bybit Unified V5</span>
+                        <span id="demoBadge" class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-800/80 text-amber-300">DEMO MODE</span>
+                    </div>
+                    <div class="text-[11px] text-zinc-500 font-mono flex items-center gap-2">
+                        <span>Autonomous Intelligence Core</span>
+                        <span>•</span>
+                        <span id="serverClock">--:--:-- UTC</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4 Circuit Indicators -->
+            <div class="flex items-center flex-wrap gap-2 text-xs font-mono">
+                <!-- Circuit 1: Database -->
+                <div id="c-db" class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-zinc-950 border border-zinc-800">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot" id="c-db-dot"></span>
+                    <span class="text-zinc-400 text-[11px]">POSTGRES</span>
+                    <span class="text-[10px] text-zinc-500" id="c-db-lat">--ms</span>
+                </div>
+
+                <!-- Circuit 2: Qdrant -->
+                <div id="c-qd" class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-zinc-950 border border-zinc-800">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot" id="c-qd-dot"></span>
+                    <span class="text-zinc-400 text-[11px]">QDRANT (3072d)</span>
+                    <span class="text-[10px] text-zinc-500" id="c-qd-lat">--ms</span>
+                </div>
+
+                <!-- Circuit 3: Bybit API -->
+                <div id="c-bybit" class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-zinc-950 border border-zinc-800">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot" id="c-bybit-dot"></span>
+                    <span class="text-zinc-400 text-[11px]">BYBIT V5</span>
+                    <span class="text-[10px] text-zinc-500" id="c-bybit-lat">--ms</span>
+                </div>
+
+                <!-- Circuit 4: Gemini/Gemma AI -->
+                <div id="c-ai" class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-zinc-950 border border-zinc-800">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot" id="c-ai-dot"></span>
+                    <span class="text-zinc-400 text-[11px]">GEMINI / GEMMA</span>
+                </div>
+
+                <!-- Live WS Status -->
+                <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-zinc-900 border border-zinc-800 text-[11px]">
+                    <i data-lucide="radio" class="w-3.5 h-3.5 text-emerald-400"></i>
+                    <span id="wsStatus" class="text-emerald-400">CONNECTED</span>
+                </div>
+            </div>
+
+        </div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <main class="max-w-[1700px] mx-auto p-4 flex-1 w-full space-y-4">
+
+        <!-- 2. WALLET & RISK PANEL -->
+        <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            
+            <!-- Total Equity -->
+            <div class="bg-[#121215] border border-[#27272a] rounded-lg p-3.5 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-zinc-400 text-xs font-mono">
+                    <span>TOTAL EQUITY</span>
+                    <i data-lucide="wallet" class="w-4 h-4 text-zinc-500"></i>
+                </div>
+                <div class="mt-2">
+                    <div class="text-2xl font-bold font-mono tracking-tight text-white" id="valTotalEquity">$0.00</div>
+                    <div class="text-[11px] text-zinc-500 font-mono mt-0.5">Unified Trading Account</div>
+                </div>
+            </div>
+
+            <!-- Available Margin -->
+            <div class="bg-[#121215] border border-[#27272a] rounded-lg p-3.5 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-zinc-400 text-xs font-mono">
+                    <span>AVAILABLE MARGIN</span>
+                    <i data-lucide="shield" class="w-4 h-4 text-zinc-500"></i>
+                </div>
+                <div class="mt-2">
+                    <div class="text-2xl font-bold font-mono tracking-tight text-white" id="valAvailMargin">$0.00</div>
+                    <div class="text-[11px] text-zinc-500 font-mono mt-0.5">Free for new positions</div>
+                </div>
+            </div>
+
+            <!-- Unrealised PnL -->
+            <div class="bg-[#121215] border border-[#27272a] rounded-lg p-3.5 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-zinc-400 text-xs font-mono">
+                    <span>UNREALISED PNL</span>
+                    <i data-lucide="trending-up" class="w-4 h-4 text-zinc-500"></i>
+                </div>
+                <div class="mt-2">
+                    <div class="text-2xl font-bold font-mono tracking-tight text-emerald-400" id="valUnrealisedPnl">+$0.00</div>
+                    <div class="text-[11px] text-zinc-500 font-mono mt-0.5" id="valUnrealisedPnlPct">0.00%</div>
+                </div>
+            </div>
+
+            <!-- Margin Utilization -->
+            <div class="bg-[#121215] border border-[#27272a] rounded-lg p-3.5 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-zinc-400 text-xs font-mono">
+                    <span>MARGIN USAGE</span>
+                    <i data-lucide="pie-chart" class="w-4 h-4 text-zinc-500"></i>
+                </div>
+                <div class="mt-2">
+                    <div class="flex items-baseline justify-between">
+                        <span class="text-2xl font-bold font-mono text-white" id="valMarginRatio">0.0%</span>
+                        <span class="text-[11px] text-zinc-500 font-mono">Max: 25%</span>
+                    </div>
+                    <div class="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden mt-1.5">
+                        <div id="barMarginRatio" class="bg-emerald-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Emergency Stop Button -->
+            <div class="bg-[#181111] border border-red-900/60 rounded-lg p-3.5 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-red-400 text-xs font-mono">
+                    <span>RISK KILL-SWITCH</span>
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-red-500 animate-pulse"></i>
+                </div>
+                <div class="mt-2">
+                    <button onclick="triggerEmergencyStop()" class="w-full bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-mono font-semibold py-2 px-3 rounded text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-red-950/50">
+                        <i data-lucide="octagon" class="w-4 h-4"></i>
+                        EMERGENCY STOP
+                    </button>
+                    <div class="text-[10px] text-red-400/80 font-mono text-center mt-1">Cancel all & close positions</div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- 3. MIDDLE ROW: Interactive Runner (Left) & Chart/Orderbook (Right) -->
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- INTERACTIVE RUNNER CONTROLS (4 Cols) -->
+            <div class="lg:col-span-4 bg-[#121215] border border-[#27272a] rounded-lg p-4 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-3 border-b border-[#27272a]">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="terminal" class="w-4 h-4 text-white"></i>
+                            <span class="font-semibold text-sm text-white">Interactive Runner</span>
+                        </div>
+                        <span class="text-[11px] font-mono text-zinc-500">Manual Trigger</span>
+                    </div>
+
+                    <div class="space-y-3.5 mt-3.5">
+                        
+                        <!-- Symbol Picker -->
+                        <div>
+                            <label class="block text-xs font-mono text-zinc-400 mb-1.5">ASSET / PAIR</label>
+                            <div class="grid grid-cols-3 gap-1.5">
+                                <button type="button" onclick="selectSymbol('BTCUSDT')" class="sym-btn active py-1.5 px-2 rounded text-xs font-mono border border-white bg-white text-black font-semibold text-center transition" data-sym="BTCUSDT">BTCUSDT</button>
+                                <button type="button" onclick="selectSymbol('ETHUSDT')" class="sym-btn py-1.5 px-2 rounded text-xs font-mono border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white text-center transition" data-sym="ETHUSDT">ETHUSDT</button>
+                                <button type="button" onclick="selectSymbol('SOLUSDT')" class="sym-btn py-1.5 px-2 rounded text-xs font-mono border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white text-center transition" data-sym="SOLUSDT">SOLUSDT</button>
+                            </div>
+                        </div>
+
+                        <!-- Timeframe Picker -->
+                        <div>
+                            <label class="block text-xs font-mono text-zinc-400 mb-1.5">TIMEFRAME</label>
+                            <div class="grid grid-cols-5 gap-1 font-mono text-xs">
+                                <button type="button" onclick="selectTf('1')" class="tf-btn py-1 rounded border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white text-center transition" data-tf="1">1m</button>
+                                <button type="button" onclick="selectTf('5')" class="tf-btn py-1 rounded border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white text-center transition" data-tf="5">5m</button>
+                                <button type="button" onclick="selectTf('15')" class="tf-btn active py-1 rounded border border-white bg-white text-black font-semibold text-center transition" data-tf="15">15m</button>
+                                <button type="button" onclick="selectTf('60')" class="tf-btn py-1 rounded border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white text-center transition" data-tf="60">1h</button>
+                                <button type="button" onclick="selectTf('D')" class="tf-btn py-1 rounded border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white text-center transition" data-tf="D">1D</button>
+                            </div>
+                        </div>
+
+                        <!-- Intelligence Model Mode -->
+                        <div>
+                            <label class="block text-xs font-mono text-zinc-400 mb-1.5">INTELLIGENCE MODEL</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button type="button" onclick="selectMode('fast')" class="mode-btn active p-2 rounded border border-white bg-white text-black text-left transition" data-mode="fast">
+                                    <div class="flex items-center gap-1.5 text-xs font-semibold">
+                                        <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+                                        FAST MODE
+                                    </div>
+                                    <div class="text-[10px] opacity-80 font-mono mt-0.5">gemini-3.5-flash-lite</div>
+                                </button>
+                                
+                                <button type="button" onclick="selectMode('deep')" class="mode-btn p-2 rounded border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white text-left transition" data-mode="deep">
+                                    <div class="flex items-center gap-1.5 text-xs font-semibold">
+                                        <i data-lucide="brain" class="w-3.5 h-3.5"></i>
+                                        DEEP REASON
+                                    </div>
+                                    <div class="text-[10px] text-zinc-500 font-mono mt-0.5">gemma-4-31b-it</div>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Live Execution Switch -->
+                        <div class="flex items-center justify-between p-2.5 rounded bg-zinc-950 border border-zinc-800">
+                            <div>
+                                <div class="text-xs font-medium text-white">Execution Target</div>
+                                <div class="text-[10px] text-zinc-500 font-mono" id="liveExecLabel">Dry-Run Simulation (No Real Orders)</div>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="chkLiveExecution" class="sr-only peer" onchange="toggleLiveExecution()">
+                                <div class="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                            </label>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-[#27272a]">
+                    <button id="btnAnalyze" onclick="triggerAnalyze()" class="bg-zinc-100 hover:bg-white text-black font-semibold text-xs py-2.5 px-3 rounded flex items-center justify-center gap-1.5 transition">
+                        <i data-lucide="activity" class="w-4 h-4"></i>
+                        <span>ANALYZE</span>
+                    </button>
+                    
+                    <button id="btnExecute" onclick="triggerExecute()" class="bg-zinc-900 hover:bg-zinc-800 text-white border border-zinc-700 font-semibold text-xs py-2.5 px-3 rounded flex items-center justify-center gap-1.5 transition">
+                        <i data-lucide="play" class="w-4 h-4"></i>
+                        <span>EXECUTE TRADE</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- CANDLESTICK CHART & ORDERBOOK (8 Cols) -->
+            <div class="lg:col-span-8 bg-[#121215] border border-[#27272a] rounded-lg p-4 flex flex-col">
+                <div class="flex items-center justify-between pb-3 border-b border-[#27272a]">
+                    <div class="flex items-center gap-3 font-mono">
+                        <span class="font-bold text-sm text-white" id="chartSymbolHeader">BTCUSDT</span>
+                        <span class="text-xs text-zinc-400" id="chartPriceHeader">$0.00</span>
+                        <span class="text-xs px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800" id="chartTrendHeader">Trend: --</span>
+                    </div>
+
+                    <!-- Orderbook Imbalance Indicator -->
+                    <div class="flex items-center gap-2 text-xs font-mono">
+                        <span class="text-zinc-500">OB Imbalance:</span>
+                        <span id="obImbalanceRatio" class="font-bold text-emerald-400">1.0x</span>
+                        <span id="obSentimentBadge" class="text-[10px] px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">BALANCED</span>
+                    </div>
+                </div>
+
+                <!-- Candlestick Chart Container -->
+                <div class="relative w-full h-[320px] mt-2 rounded overflow-hidden" id="tvChartContainer">
+                    <div id="chartLoadingOverlay" class="absolute inset-0 bg-black/60 flex items-center justify-center text-xs font-mono text-zinc-400">
+                        Loading candles...
+                    </div>
+                </div>
+
+                <!-- Technical Indicators Quick Ticker Bar -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2 mt-3 pt-3 border-t border-[#27272a] text-xs font-mono">
+                    <div class="bg-zinc-950 p-2 rounded border border-zinc-900">
+                        <div class="text-[10px] text-zinc-500">RSI (14)</div>
+                        <div class="font-bold mt-0.5" id="techRSI">--</div>
+                    </div>
+                    <div class="bg-zinc-950 p-2 rounded border border-zinc-900">
+                        <div class="text-[10px] text-zinc-500">MACD (12,26,9)</div>
+                        <div class="font-bold mt-0.5" id="techMACD">--</div>
+                    </div>
+                    <div class="bg-zinc-950 p-2 rounded border border-zinc-900">
+                        <div class="text-[10px] text-zinc-500">EMA (9 / 21)</div>
+                        <div class="font-bold mt-0.5 text-zinc-300" id="techEMA9_21">-- / --</div>
+                    </div>
+                    <div class="bg-zinc-950 p-2 rounded border border-zinc-900">
+                        <div class="text-[10px] text-zinc-500">EMA (50 / 200)</div>
+                        <div class="font-bold mt-0.5 text-zinc-300" id="techEMA50_200">-- / --</div>
+                    </div>
+                    <div class="bg-zinc-950 p-2 rounded border border-zinc-900">
+                        <div class="text-[10px] text-zinc-500">ATR (14)</div>
+                        <div class="font-bold mt-0.5 text-zinc-300" id="techATR">--</div>
+                    </div>
+                    <div class="bg-zinc-950 p-2 rounded border border-zinc-900">
+                        <div class="text-[10px] text-zinc-500">VOL RATIO</div>
+                        <div class="font-bold mt-0.5 text-zinc-300" id="techVolRatio">--</div>
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+
+        <!-- 4. ACTIVE POSITIONS TABLE -->
+        <section class="bg-[#121215] border border-[#27272a] rounded-lg p-4">
+            <div class="flex items-center justify-between pb-3 border-b border-[#27272a]">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="layers" class="w-4 h-4 text-white"></i>
+                    <span class="font-semibold text-sm text-white">Active Positions</span>
+                    <span id="posCountBadge" class="text-xs font-mono px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400">0 Open</span>
+                </div>
+                <button onclick="refreshPositions()" class="text-xs text-zinc-400 hover:text-white font-mono flex items-center gap-1">
+                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                    Refresh
+                </button>
+            </div>
+
+            <div class="overflow-x-auto mt-2">
+                <table class="w-full text-left text-xs font-mono">
+                    <thead class="text-zinc-500 border-b border-zinc-800/80">
+                        <tr>
+                            <th class="py-2.5 px-3">ASSET</th>
+                            <th class="py-2.5 px-3">SIDE</th>
+                            <th class="py-2.5 px-3">SIZE</th>
+                            <th class="py-2.5 px-3">ENTRY PRICE</th>
+                            <th class="py-2.5 px-3">MARK PRICE</th>
+                            <th class="py-2.5 px-3">UNREALISED PNL</th>
+                            <th class="py-2.5 px-3">TP / SL</th>
+                            <th class="py-2.5 px-3 text-right">ACTION</th>
+                        </tr>
+                    </thead>
+                    <tbody id="positionsTableBody" class="divide-y divide-zinc-800/50">
+                        <tr>
+                            <td colspan="8" class="py-8 text-center text-zinc-500">
+                                No active positions open on Bybit.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 5. AGENT REASONING STREAM & SYSTEM LOGS -->
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            <!-- LIVE LANGGRAPH REASONING CARDS (8 Cols) -->
+            <div class="lg:col-span-8 bg-[#121215] border border-[#27272a] rounded-lg p-4 flex flex-col">
+                <div class="flex items-center justify-between pb-3 border-b border-[#27272a]">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="cpu" class="w-4 h-4 text-emerald-400"></i>
+                        <span class="font-semibold text-sm text-white">Agent Reasoning Stream (LangGraph)</span>
+                    </div>
+                    <!-- Language switch -->
+                    <div class="flex items-center gap-1 bg-zinc-950 border border-zinc-800 p-0.5 rounded text-[11px] font-mono">
+                        <button onclick="setLang('ru')" id="btnLangRu" class="px-2 py-0.5 rounded bg-zinc-800 text-white font-semibold">RU</button>
+                        <button onclick="setLang('en')" id="btnLangEn" class="px-2 py-0.5 rounded text-zinc-400 hover:text-white">EN (Base)</button>
+                    </div>
+                </div>
+
+                <!-- Latest Decision Card -->
+                <div id="latestDecisionContainer" class="mt-3">
+                    <div class="p-4 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-mono space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span id="decisionActionBadge" class="px-2.5 py-1 rounded bg-zinc-800 text-white font-bold text-sm">HOLD</span>
+                                <span class="text-zinc-400" id="decisionSymbolBadge">BTCUSDT (15m)</span>
+                                <span class="text-zinc-500" id="decisionConfidence">Confidence: 50%</span>
+                            </div>
+                            <div class="text-[11px] text-zinc-500" id="decisionTimestamp">--</div>
+                        </div>
+
+                        <!-- Target levels -->
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-zinc-900">
+                            <div>
+                                <span class="text-zinc-500 text-[10px]">ENTRY</span>
+                                <div class="font-bold text-white" id="decEntry">--</div>
+                            </div>
+                            <div>
+                                <span class="text-zinc-500 text-[10px]">STOP-LOSS</span>
+                                <div class="font-bold text-red-400" id="decSL">--</div>
+                            </div>
+                            <div>
+                                <span class="text-zinc-500 text-[10px]">TAKE-PROFIT 1</span>
+                                <div class="font-bold text-emerald-400" id="decTP1">--</div>
+                            </div>
+                            <div>
+                                <span class="text-zinc-500 text-[10px]">RISK/REWARD</span>
+                                <div class="font-bold text-zinc-300" id="decRR">--</div>
+                            </div>
+                        </div>
+
+                        <!-- Reasoning Box -->
+                        <div class="p-3 rounded bg-zinc-900/60 border border-zinc-800/80 font-sans text-xs text-zinc-300 leading-relaxed" id="decisionReasoningText">
+                            Ready for analysis. Click 'ANALYZE' or 'EXECUTE' in the runner above.
+                        </div>
+
+                        <!-- Risk Notes Box -->
+                        <div class="text-[11px] font-mono text-zinc-400 flex items-start gap-2 bg-zinc-900/30 p-2 rounded border border-zinc-900" id="decisionRiskNotes">
+                            <i data-lucide="shield-alert" class="w-4 h-4 text-amber-400 shrink-0 mt-0.5"></i>
+                            <span>Risk factors and invalidation criteria will appear here.</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- SYSTEM LOG FEED (4 Cols) -->
+            <div class="lg:col-span-4 bg-[#121215] border border-[#27272a] rounded-lg p-4 flex flex-col">
+                <div class="flex items-center justify-between pb-3 border-b border-[#27272a]">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="list" class="w-4 h-4 text-white"></i>
+                        <span class="font-semibold text-sm text-white">System & Node Logs</span>
+                    </div>
+                    <button onclick="refreshLogs()" class="text-xs text-zinc-400 hover:text-white font-mono">
+                        Clear / Sync
+                    </button>
+                </div>
+
+                <div id="logsFeed" class="flex-1 max-h-[300px] overflow-y-auto space-y-2 mt-3 text-[11px] font-mono pr-1">
+                    <div class="text-zinc-600 text-center py-6">Connecting to log stream...</div>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- JAVASCRIPT APP LOGIC -->
+    <script>
+        // State
+        let currentSymbol = "BTCUSDT";
+        let currentTimeframe = "15";
+        let currentMode = "fast";
+        let currentLang = "ru";
+        let isLive = false;
+        let chart = null;
+        let candleSeries = null;
+        let currentDecisionData = null;
+        let ws = null;
+
+        // Initialize on load
+        document.addEventListener("DOMContentLoaded", () => {
+            lucide.createIcons();
+            initChart();
+            initWebSocket();
+            fetchSystemStatus();
+            fetchWallet();
+            fetchPositions();
+            fetchKlines();
+            fetchLogs();
+
+            // Periodic polling
+            setInterval(fetchSystemStatus, 8000);
+            setInterval(fetchWallet, 10000);
+            setInterval(fetchPositions, 10000);
+            setInterval(updateClock, 1000);
+        });
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById("serverClock").innerText = now.toUTCString().slice(17, 25) + " UTC";
+        }
+
+        // Initialize TradingView Lightweight Chart
+        function initChart() {
+            const container = document.getElementById("tvChartContainer");
+            chart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: 320,
+                layout: {
+                    background: { color: '#121215' },
+                    textColor: '#71717a',
+                },
+                grid: {
+                    vertLines: { color: '#1f1f23' },
+                    horzLines: { color: '#1f1f23' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                },
+                timeScale: {
+                    borderColor: '#27272a',
+                    timeVisible: true,
+                },
+                rightPriceScale: {
+                    borderColor: '#27272a',
+                }
+            });
+
+            candleSeries = chart.addCandlestickSeries({
+                upColor: '#22c55e',
+                downColor: '#ef4444',
+                borderVisible: false,
+                wickUpColor: '#22c55e',
+                wickDownColor: '#ef4444',
+            });
+
+            window.addEventListener('resize', () => {
+                if (chart && container) {
+                    chart.applyOptions({ width: container.clientWidth });
+                }
+            });
+        }
+
+        // WebSocket Connection
+        function initWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/api/trading/ws`;
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                document.getElementById("wsStatus").innerText = "CONNECTED";
+                document.getElementById("wsStatus").className = "text-emerald-400";
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleWSMessage(data);
+                } catch (e) {
+                    console.error("WS Parse error:", e);
+                }
+            };
+
+            ws.onclose = () => {
+                document.getElementById("wsStatus").innerText = "RECONNECTING";
+                document.getElementById("wsStatus").className = "text-amber-400";
+                setTimeout(initWebSocket, 3000);
+            };
+        }
+
+        function handleWSMessage(msg) {
+            if (msg.type === "ANALYSIS_COMPLETED") {
+                currentDecisionData = msg.decision;
+                renderDecision(msg.decision);
+                appendLog(`[ANALYSIS] ${msg.symbol} -> ${msg.decision.action} (${intPercent(msg.decision.confidence)}%)`);
+            } else if (msg.type === "EXECUTION_RESULT") {
+                renderExecutionResult(msg);
+                appendLog(`[EXECUTION] ${msg.symbol} -> ${msg.execution.status}`);
+                fetchWallet();
+                fetchPositions();
+            } else if (msg.type === "EMERGENCY_STOP_ACTIVATED") {
+                appendLog(`🚨 [EMERGENCY STOP] Closed ${msg.closed_count} positions`);
+                fetchWallet();
+                fetchPositions();
+            }
+        }
+
+        // REST API Calls
+        async function fetchSystemStatus() {
+            try {
+                const res = await fetch("/api/trading/status");
+                const data = await res.json();
+                const circuits = data.circuits;
+
+                // PostgreSQL
+                updateCircuit("c-db", circuits.database);
+                if (circuits.database?.latency_ms) document.getElementById("c-db-lat").innerText = circuits.database.latency_ms + "ms";
+
+                // Qdrant
+                updateCircuit("c-qd", circuits.qdrant);
+                if (circuits.qdrant?.latency_ms) document.getElementById("c-qd-lat").innerText = circuits.qdrant.latency_ms + "ms";
+
+                // Bybit
+                updateCircuit("c-bybit", circuits.bybit);
+                if (circuits.bybit?.latency_ms) document.getElementById("c-bybit-lat").innerText = circuits.bybit.latency_ms + "ms";
+                if (circuits.bybit?.demo) {
+                    document.getElementById("demoBadge").innerText = "BYBIT DEMO";
+                }
+
+                // AI
+                updateCircuit("c-ai", circuits.gemini_ai);
+
+            } catch (e) {
+                console.error("Status fetch error:", e);
+            }
+        }
+
+        function updateCircuit(elementId, circuitData) {
+            const dot = document.getElementById(`${elementId}-dot`);
+            if (!dot) return;
+            if (circuitData?.status === "online") {
+                dot.className = "w-2 h-2 rounded-full bg-emerald-500 pulse-dot";
+            } else if (circuitData?.status === "warning") {
+                dot.className = "w-2 h-2 rounded-full bg-amber-500 pulse-dot";
+            } else {
+                dot.className = "w-2 h-2 rounded-full bg-red-500 pulse-dot";
+            }
+        }
+
+        async function fetchWallet() {
+            try {
+                const res = await fetch("/api/trading/wallet");
+                const data = await res.json();
+                const equity = data.total_equity || 0;
+                const avail = data.available_margin || 0;
+
+                document.getElementById("valTotalEquity").innerText = `$${equity.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                document.getElementById("valAvailMargin").innerText = `$${avail.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+                const marginRatio = equity > 0 ? Math.min(100, Math.max(0, ((equity - avail) / equity) * 100)) : 0;
+                document.getElementById("valMarginRatio").innerText = `${marginRatio.toFixed(1)}%`;
+                document.getElementById("barMarginRatio").style.width = `${marginRatio}%`;
+
+            } catch (e) {
+                console.error("Wallet fetch error:", e);
+            }
+        }
+
+        async function fetchPositions() {
+            try {
+                const res = await fetch("/api/trading/positions");
+                const data = await res.json();
+                const positions = data.positions || [];
+
+                document.getElementById("posCountBadge").innerText = `${positions.length} Open`;
+
+                const tbody = document.getElementById("positionsTableBody");
+                if (positions.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="8" class="py-8 text-center text-zinc-500">No active positions open on Bybit.</td></tr>`;
+                    document.getElementById("valUnrealisedPnl").innerText = "+$0.00";
+                    document.getElementById("valUnrealisedPnl").className = "text-2xl font-bold font-mono tracking-tight text-zinc-400";
+                    return;
+                }
+
+                let totalUnPnl = 0;
+                tbody.innerHTML = positions.map(p => {
+                    totalUnPnl += p.unrealised_pnl;
+                    const isLong = p.side.toLowerCase() === "buy";
+                    const pnlClass = p.unrealised_pnl >= 0 ? "text-emerald-400" : "text-red-400";
+                    const sideBadge = isLong 
+                        ? `<span class="px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/80">LONG ${p.leverage}x</span>`
+                        : `<span class="px-2 py-0.5 rounded bg-red-950/80 text-red-300 border border-red-800/80">SHORT ${p.leverage}x</span>`;
+
+                    return `
+                        <tr class="hover:bg-zinc-900/40 transition">
+                            <td class="py-3 px-3 font-bold text-white">${p.symbol}</td>
+                            <td class="py-3 px-3">${sideBadge}</td>
+                            <td class="py-3 px-3 text-zinc-300">${p.size}</td>
+                            <td class="py-3 px-3 text-zinc-400">$${p.entry_price.toFixed(2)}</td>
+                            <td class="py-3 px-3 text-zinc-300">$${p.mark_price.toFixed(2)}</td>
+                            <td class="py-3 px-3 ${pnlClass} font-bold">$${p.unrealised_pnl.toFixed(2)}</td>
+                            <td class="py-3 px-3 text-[11px] text-zinc-500">TP: ${p.take_profit || '--'} / SL: ${p.stop_loss || '--'}</td>
+                            <td class="py-3 px-3 text-right">
+                                <button onclick="closeSinglePosition('${p.symbol}')" class="px-2 py-1 rounded bg-zinc-800 hover:bg-red-900/80 text-zinc-300 hover:text-white border border-zinc-700 hover:border-red-600 transition">
+                                    Close
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join("");
+
+                document.getElementById("valUnrealisedPnl").innerText = `${totalUnPnl >= 0 ? '+' : ''}$${totalUnPnl.toFixed(2)}`;
+                document.getElementById("valUnrealisedPnl").className = `text-2xl font-bold font-mono tracking-tight ${totalUnPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`;
+
+            } catch (e) {
+                console.error("Positions fetch error:", e);
+            }
+        }
+
+        async function closeSinglePosition(symbol) {
+            if (!confirm(`Are you sure you want to market close position for ${symbol}?`)) return;
+            try {
+                const res = await fetch("/api/trading/positions/close", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ symbol })
+                });
+                const data = await res.json();
+                fetchPositions();
+                fetchWallet();
+            } catch (e) {
+                alert("Failed to close position: " + e);
+            }
+        }
+
+        async function triggerEmergencyStop() {
+            if (!confirm("🚨 ARE YOU SURE YOU WANT TO TRIGGER EMERGENCY STOP?\nThis will immediately market close all open positions and cancel active orders!")) return;
+            try {
+                const res = await fetch("/api/trading/emergency-stop", { method: "POST" });
+                const data = await res.json();
+                alert(`🚨 Emergency Stop Completed. Closed ${data.closed_positions_count} positions.`);
+                fetchPositions();
+                fetchWallet();
+            } catch (e) {
+                alert("Emergency stop failed: " + e);
+            }
+        }
+
+        async function fetchKlines() {
+            const overlay = document.getElementById("chartLoadingOverlay");
+            if (overlay) overlay.style.display = "flex";
+
+            try {
+                const res = await fetch(`/api/trading/klines?symbol=${currentSymbol}&interval=${currentTimeframe}&limit=100`);
+                const data = await res.json();
+                const klines = data.klines || [];
+
+                if (klines.length > 0 && candleSeries) {
+                    const formatted = klines.map(k => ({
+                        time: Math.floor(new Date(k.open_time).getTime() / 1000),
+                        open: parseFloat(k.open),
+                        high: parseFloat(k.high),
+                        low: parseFloat(k.low),
+                        close: parseFloat(k.close)
+                    })).sort((a, b) => a.time - b.time);
+
+                    candleSeries.setData(formatted);
+
+                    const last = formatted[formatted.length - 1];
+                    document.getElementById("chartPriceHeader").innerText = `$${last.close.toLocaleString('en-US')}`;
+                    document.getElementById("chartSymbolHeader").innerText = currentSymbol;
+                }
+
+                if (overlay) overlay.style.display = "none";
+            } catch (e) {
+                console.error("Klines fetch error:", e);
+                if (overlay) overlay.style.display = "none";
+            }
+        }
+
+        async function fetchLogs() {
+            try {
+                const res = await fetch("/api/trading/logs?limit=15");
+                const data = await res.json();
+                const logs = data.logs || [];
+                const feed = document.getElementById("logsFeed");
+
+                feed.innerHTML = logs.map(l => {
+                    const isSignal = l.level === "SIGNAL_ALERT" || l.level === "ORDER_PLACED";
+                    const borderClass = isSignal ? "border-emerald-800/80 bg-emerald-950/20" : "border-zinc-900 bg-zinc-950";
+                    const timeStr = l.created_at ? l.created_at.slice(11, 19) : "--:--";
+
+                    return `
+                        <div class="p-2 rounded border ${borderClass}">
+                            <div class="flex items-center justify-between text-zinc-500 text-[10px]">
+                                <span>[${l.component}]</span>
+                                <span>${timeStr}</span>
+                            </div>
+                            <div class="text-zinc-300 mt-1">${currentLang === 'ru' ? (l.message_ru || l.message_en) : l.message_en}</div>
+                        </div>
+                    `;
+                }).join("");
+
+            } catch (e) {
+                console.error("Logs fetch error:", e);
+            }
+        }
+
+        function appendLog(msg) {
+            const feed = document.getElementById("logsFeed");
+            const timeStr = new Date().toTimeString().slice(0, 8);
+            const item = `
+                <div class="p-2 rounded border border-zinc-800 bg-zinc-950 animate-fadeIn">
+                    <div class="flex items-center justify-between text-zinc-500 text-[10px]">
+                        <span>[STREAM]</span>
+                        <span>${timeStr}</span>
+                    </div>
+                    <div class="text-zinc-300 mt-1">${msg}</div>
+                </div>
+            `;
+            feed.insertAdjacentHTML("afterbegin", item);
+        }
+
+        // Selection Handlers
+        function selectSymbol(sym) {
+            currentSymbol = sym;
+            document.querySelectorAll(".sym-btn").forEach(b => {
+                if (b.dataset.sym === sym) {
+                    b.className = "sym-btn active py-1.5 px-2 rounded text-xs font-mono border border-white bg-white text-black font-semibold text-center transition";
+                } else {
+                    b.className = "sym-btn py-1.5 px-2 rounded text-xs font-mono border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white text-center transition";
+                }
+            });
+            fetchKlines();
+        }
+
+        function selectTf(tf) {
+            currentTimeframe = tf;
+            document.querySelectorAll(".tf-btn").forEach(b => {
+                if (b.dataset.tf === tf) {
+                    b.className = "tf-btn active py-1 rounded border border-white bg-white text-black font-semibold text-center transition";
+                } else {
+                    b.className = "tf-btn py-1 rounded border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white text-center transition";
+                }
+            });
+            fetchKlines();
+        }
+
+        function selectMode(m) {
+            currentMode = m;
+            document.querySelectorAll(".mode-btn").forEach(b => {
+                if (b.dataset.mode === m) {
+                    b.className = "mode-btn active p-2 rounded border border-white bg-white text-black text-left transition";
+                } else {
+                    b.className = "mode-btn p-2 rounded border border-zinc-800 bg-zinc-950 text-zinc-400 hover:text-white text-left transition";
+                }
+            });
+        }
+
+        function toggleLiveExecution() {
+            isLive = document.getElementById("chkLiveExecution").checked;
+            const label = document.getElementById("liveExecLabel");
+            if (isLive) {
+                label.innerText = "🚨 LIVE TRADING (Real Bybit Orders)";
+                label.className = "text-[10px] text-amber-400 font-mono font-bold";
+            } else {
+                label.innerText = "Dry-Run Simulation (No Real Orders)";
+                label.className = "text-[10px] text-zinc-500 font-mono";
+            }
+        }
+
+        function setLang(lang) {
+            currentLang = lang;
+            document.getElementById("btnLangRu").className = lang === 'ru' ? "px-2 py-0.5 rounded bg-zinc-800 text-white font-semibold" : "px-2 py-0.5 rounded text-zinc-400 hover:text-white";
+            document.getElementById("btnLangEn").className = lang === 'en' ? "px-2 py-0.5 rounded bg-zinc-800 text-white font-semibold" : "px-2 py-0.5 rounded text-zinc-400 hover:text-white";
+            if (currentDecisionData) {
+                renderDecision(currentDecisionData);
+            }
+            fetchLogs();
+        }
+
+        // Trigger Analysis
+        async function triggerAnalyze() {
+            const btn = document.getElementById("btnAnalyze");
+            btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>ANALYZING...</span>`;
+            btn.disabled = true;
+            lucide.createIcons();
+
+            try {
+                const res = await fetch("/api/trading/analyze", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        symbol: currentSymbol,
+                        timeframe: currentTimeframe,
+                        mode: currentMode
+                    })
+                });
+                const data = await res.json();
+                currentDecisionData = data.decision;
+                renderDecision(data.decision);
+                renderTechnicalSummary(data.technical_indicators);
+                fetchLogs();
+            } catch (e) {
+                alert("Analysis failed: " + e);
+            } finally {
+                btn.innerHTML = `<i data-lucide="activity" class="w-4 h-4"></i><span>ANALYZE</span>`;
+                btn.disabled = false;
+                lucide.createIcons();
+            }
+        }
+
+        // Trigger Execute
+        async function triggerExecute() {
+            const btn = document.getElementById("btnExecute");
+            btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>EXECUTING...</span>`;
+            btn.disabled = true;
+            lucide.createIcons();
+
+            try {
+                const res = await fetch("/api/trading/execute", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        symbol: currentSymbol,
+                        timeframe: currentTimeframe,
+                        mode: currentMode,
+                        live: isLive
+                    })
+                });
+                const data = await res.json();
+                currentDecisionData = data.decision;
+                renderDecision(data.decision);
+                renderTechnicalSummary(data.technical_indicators);
+                fetchWallet();
+                fetchPositions();
+                fetchLogs();
+            } catch (e) {
+                alert("Execute failed: " + e);
+            } finally {
+                btn.innerHTML = `<i data-lucide="play" class="w-4 h-4"></i><span>EXECUTE TRADE</span>`;
+                btn.disabled = false;
+                lucide.createIcons();
+            }
+        }
+
+        function renderDecision(dec) {
+            if (!dec) return;
+            const actBadge = document.getElementById("decisionActionBadge");
+            const act = dec.action || "HOLD";
+            actBadge.innerText = act;
+
+            if (act === "BUY") {
+                actBadge.className = "px-2.5 py-1 rounded bg-emerald-600 text-white font-bold text-sm";
+            } else if (act === "SELL") {
+                actBadge.className = "px-2.5 py-1 rounded bg-red-600 text-white font-bold text-sm";
+            } else {
+                actBadge.className = "px-2.5 py-1 rounded bg-zinc-800 text-zinc-300 font-bold text-sm";
+            }
+
+            document.getElementById("decisionSymbolBadge").innerText = `${currentSymbol} (${currentTimeframe}m)`;
+            document.getElementById("decisionConfidence").innerText = `Confidence: ${intPercent(dec.confidence)}%`;
+            document.getElementById("decisionTimestamp").innerText = new Date().toLocaleTimeString();
+
+            document.getElementById("decEntry").innerText = dec.entry_price ? `$${dec.entry_price}` : "--";
+            document.getElementById("decSL").innerText = dec.stop_loss ? `$${dec.stop_loss}` : "--";
+            document.getElementById("decTP1").innerText = dec.take_profit_1 ? `$${dec.take_profit_1}` : "--";
+            document.getElementById("decRR").innerText = dec.risk_reward_ratio ? `${dec.risk_reward_ratio}:1` : "--";
+
+            const reason = currentLang === 'ru' ? (dec.reasoning_ru || dec.reasoning_en) : dec.reasoning_en;
+            document.getElementById("decisionReasoningText").innerText = reason || "No reasoning generated.";
+
+            const riskNotes = currentLang === 'ru' ? (dec.risk_notes_ru || dec.risk_notes_en) : dec.risk_notes_en;
+            document.getElementById("decisionRiskNotes").innerHTML = `
+                <i data-lucide="shield-alert" class="w-4 h-4 text-amber-400 shrink-0 mt-0.5"></i>
+                <span>${riskNotes || "No risk notes."}</span>
+            `;
+            lucide.createIcons();
+        }
+
+        function renderTechnicalSummary(tech) {
+            if (!tech) return;
+            if (tech.trend) document.getElementById("chartTrendHeader").innerText = `Trend: ${tech.trend}`;
+            if (tech.rsi?.value) document.getElementById("techRSI").innerText = `${tech.rsi.value} (${tech.rsi.status})`;
+            if (tech.macd?.histogram) document.getElementById("techMACD").innerText = `${tech.macd.histogram}`;
+            if (tech.ema) {
+                document.getElementById("techEMA9_21").innerText = `${tech.ema.ema9} / ${tech.ema.ema21}`;
+                document.getElementById("techEMA50_200").innerText = `${tech.ema.ema50} / ${tech.ema.ema200}`;
+            }
+            if (tech.atr) document.getElementById("techATR").innerText = `${tech.atr}`;
+            if (tech.volume_ratio) document.getElementById("techVolRatio").innerText = `${tech.volume_ratio}x`;
+
+            if (tech.orderbook_imbalance) {
+                const ob = tech.orderbook_imbalance;
+                document.getElementById("obImbalanceRatio").innerText = `${ob.imbalance_ratio}x`;
+                document.getElementById("obSentimentBadge").innerText = ob.sentiment;
+            }
+        }
+
+        function intPercent(val) {
+            return Math.round((val || 0) * 100);
+        }
+    </script>
+</body>
+</html>

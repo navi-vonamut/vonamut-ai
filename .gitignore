@@ -205,3 +205,26 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Node / Web
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+out/
+build/
+.next
+
+# Database & Runtime Data
+postgres_data/
+redis_data/
+qdrant_data/
+directus_uploads/
+browser_profiles/
+**/browser_profiles/
+
+# Secrets & Environment
+.env
+.env*.local
+*.log
+

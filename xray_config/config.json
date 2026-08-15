@@ -1,0 +1,53 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "listen": "0.0.0.0",
+      "port": 10808,
+      "protocol": "socks",
+      "settings": {
+        "auth": "noauth",
+        "udp": true
+      }
+    },
+    {
+      "listen": "0.0.0.0",
+      "port": 10809,
+      "protocol": "http",
+      "settings": {}
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "64.137.9.188",
+            "port": 443,
+            "users": [
+              {
+                "id": "c1dedb20-2189-425e-a70d-82f8e8cc984a",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "publicKey": "eS74GDyagqfHB8cSIVJBW2Ra9T9F5qzlA0TOnrGa7lI",
+          "fingerprint": "chrome",
+          "serverName": "www.vk.ru",
+          "shortId": "1ec5c7",
+          "spiderX": "/"
+        }
+      }
+    }
+  ]
+}

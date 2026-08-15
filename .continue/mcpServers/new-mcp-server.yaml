@@ -1,0 +1,13 @@
+name: vonamut-graph-gateway
+version: 1.0.0
+schema: v1
+mcpServers:
+  - name: vonamut-graph-gateway
+    command: docker
+    args:
+      - exec
+      - -i
+      - vonamut_mcp_gateway
+      - python
+      - -u
+      - src/mcp_gateway.py

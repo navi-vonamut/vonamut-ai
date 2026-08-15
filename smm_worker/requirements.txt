@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+playwright
+playwright-stealth
+pydantic
+aiohttp
+uiautomator2
+adbutils
+watchfiles

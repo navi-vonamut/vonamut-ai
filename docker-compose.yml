@@ -1,0 +1,141 @@
+services:
+  # База данных PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME_ASTRO}
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    # 💡 НАДЕЖНЫЙ HEALTHCHECK ДЛЯ ALPINE БЕЗ ИСПОЛЬЗОВАНИЯ SH И LOCALE:
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "${DB_USER}", "-d", "${DB_NAME_ASTRO}" ]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - astro-network
+
+  # Основное приложение (Chainlit / Logic)
+  app:
+    build: .
+    volumes:
+      - .:/app
+      - C:\Users\user\Desktop\Repo:/app/projects
+    env_file:
+      - .env
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - QDRANT_URL=${QDRANT_URL}
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME_CHAINLIT}
+      - ASTRO_DB_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME_ASTRO}
+    ports:
+      - "8001:8000" # Переносим основной app на 8001, чтобы освободить 8000 для шлюза
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      xray:
+        condition: service_started
+    networks:
+      - astro-network
+
+  # Шлюз для Continue / VS Code (MCP Server)
+  gateway:
+    build: .
+    container_name: vonamut_mcp_gateway # 💡 ФИКСИРУЕМ ИМЯ КОНТЕЙНЕРА
+    volumes:
+      - .:/app
+      - C:\Users\user\Desktop\Repo:/app/projects
+    env_file:
+      - .env
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - QDRANT_URL=${QDRANT_URL}
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME_CHAINLIT}
+      - ASTRO_DB_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME_ASTRO}
+    # 💡 Контейнер спит в фоне. MCP-сессии будут запускаться по требованию из VS Code.
+    command: tail -f /dev/null
+    # ports:  <-- Порт 8000 больше не нужен, связь пойдет через stdio Docker
+    #   - "8000:8000" 
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - astro-network
+
+  # Админ-панель Directus
+  directus:
+    image: directus/directus:latest
+    ports:
+      - "8056:8055"
+    volumes:
+      - ./directus_uploads:/directus/uploads
+    environment:
+      - KEY=${DIRECTUS_KEY}
+      - SECRET=${DIRECTUS_SECRET}
+      - DB_CLIENT=pg
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_DATABASE=${DB_NAME_ASTRO}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - astro-network
+
+  # Xray клиент для обхода ограничений
+  xray:
+    image: teddysun/xray
+    volumes:
+      - ./xray_config:/etc/xray
+    networks:
+      - astro-network
+
+  qdrant:
+    image: qdrant/qdrant
+    ports:
+      - "6335:6333"
+    volumes:
+      - ./qdrant_data:/qdrant/storage
+    networks:
+      - astro-network
+
+  # Redis для горячих рыночных данных (L1 Cache, Pub/Sub, Orderbook, Tickers)
+  redis:
+    image: redis:7-alpine
+    container_name: vonamut_redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6380:6379"
+    volumes:
+      - ./redis_data:/data
+    networks:
+      - astro-network
+
+  # Микросервис "Руки" (Playwright Worker)
+  smm_worker:
+    image: mcr.microsoft.com/playwright/python:v1.60.0-jammy # Официальный образ с браузерами
+    container_name: astro_smm_worker
+    working_dir: /app/smm_worker
+    volumes:
+      - ./smm_worker:/app/smm_worker
+      - ./browser_profiles:/app/browser_profiles # 💡 ЗДЕСЬ БУДУТ ХРАНИТЬСЯ КУКИ ДЛЯ 10+ АККАУНТОВ
+    ports:
+      - "8002:8000"
+    command: bash -c "pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/smm_worker/platforms --reload-dir /app/smm_worker/utils"
+
+    environment:
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+    networks:
+      - astro-network
+
+networks:
+  astro-network:
+    external: true
